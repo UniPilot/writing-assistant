@@ -1,0 +1,7 @@
+streamlit
+pypinyin
+spacy
+torch
+transformers
+pymongo
+certifi
