@@ -122,9 +122,13 @@ def get_pinyin_with_tone(text):
 
 # ====== Streamlit App ======
 def main():
-    st.title("📝 中文文本助手")
+    st.title("学术写作智能助手")
 
-    # 连接 MongoDB 和 BERT 模型，App启动时只做一次
+    # 初始化历史记录
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    # 连接 MongoDB 和 BERT 模型
     if "mongodb_client" not in st.session_state:
         st.session_state.mongodb_client = connect_mongodb()
     if "bert_tokenizer" not in st.session_state or "bert_model" not in st.session_state:
@@ -132,10 +136,7 @@ def main():
         st.session_state.bert_tokenizer = tokenizer
         st.session_state.bert_model = model
 
-    # 功能选项卡
     feature = st.radio("请选择功能", ["风格迁移", "语义纠错"], horizontal=True)
-
-    # 输入框
     user_input = st.text_area(f"请输入文本（当前功能：{feature}）", height=150)
 
     if st.button("执行"):
@@ -151,9 +152,7 @@ def main():
             db = st.session_state.mongodb_client.get_database("paper")
             collection = db.get_collection("papers")
 
-            # 找相似参考论文
             ref_doc, sim_score = find_most_similar(user_input, collection, st.session_state.bert_tokenizer, st.session_state.bert_model)
-            # 找随机参考论文
             random_doc = find_random_article(collection)
 
             st.write("正在生成风格迁移结果，请稍候...")
@@ -174,12 +173,19 @@ def main():
             st.write(random_doc.get('content', '')[:300] + "..." if random_doc else "无参考文献")
             st.write(adjusted_random)
 
+            # 添加风格迁移历史记录
+            st.session_state.chat_history.append({
+                "type": "风格迁移",
+                "input": user_input,
+                "reference_excerpt": ref_doc.get('content', '')[:200] if ref_doc else "",
+                "adjusted_output": adjusted_similar
+            })
+
         elif feature == "语义纠错":
-            # 拼写纠错
             pinyin_info = get_pinyin_with_tone(user_input)
             spelling_prompt = (
-                ""你是中文拼写纠错专家，请根据拼音信息，判断并纠正中文文本中可能存在的拼写错误。\n"
-        "要求：\n1. 只输出纠正后的文本\n2. 若文本无误，则原样输出\n3. 避免引入新错误""
+                "你是中文拼写纠错专家，请根据拼音信息，判断并纠正中文文本中可能存在的拼写错误。\n"
+                "要求：\n1. 只输出纠正后的文本\n2. 若文本无误，则原样输出\n3. 避免引入新错误\n"
                 f"文本：{user_input}\n拼音：{pinyin_info}"
             )
             spelling_result = call_local_qwen(spelling_prompt)
@@ -187,15 +193,14 @@ def main():
             if ENABLE_SELF_REFLECTION:
                 reflection_prompt = (
                     f"请检查以下纠错结果是否符合要求：\n"
-            f"1. 是否解决了原句中的所有拼写问题\n"
-            f"2. 是否遵循了最小变化原则\n"
-            f"3. 是否引入了新的错误\n"
-            f"4. 如果发现问题，请直接输出改进后的句子，无需解释\n"
-            f"5. 如果结果正确，请直接输出原句\n\n"
-            f"原句: {user_input}\n"
-            f"初始纠错结果: {spelling_result}\n\n"
-            f"请输出最终正确的句子:"
-                    f"原句: {user_input}\n初始纠错结果: {spelling_result}\n请输出最终正确的句子:"
+                    f"1. 是否解决了原句中的所有拼写问题\n"
+                    f"2. 是否遵循了最小变化原则\n"
+                    f"3. 是否引入了新的错误\n"
+                    f"4. 如果发现问题，请直接输出改进后的句子，无需解释\n"
+                    f"5. 如果结果正确，请直接输出原句\n\n"
+                    f"原句: {user_input}\n"
+                    f"初始纠错结果: {spelling_result}\n\n"
+                    f"请输出最终正确的句子:"
                 )
                 spelling_result = call_local_qwen(reflection_prompt)
 
@@ -208,21 +213,43 @@ def main():
 
             if ENABLE_SELF_REFLECTION:
                 grammar_reflection_prompt = (
-                    "f"你是语病检查员,请检查以下纠错结果是否符合要求：\n"
-            f"1. 是否解决了原句中的所有语病问题\n"
-            f"2. 是否遵循了最小变化原则\n"
-            f"3. 是否引入了新的错误\n"
-            f"4. 如果发现问题，请直接输出改进后的句子，无需解释\n"
-            f"5. 如果结果正确，请直接输出原句\n\n"
-            f"原句: {user_input}\n"
-            f"初始纠错结果: {grammar_result}\n\n"
-            f"请输出最终正确的句子:""
-                    f"原句: {user_input}\n初始纠错结果: {grammar_result}\n请输出最终正确的句子:"
+                    f"你是语病检查员，请检查以下纠错结果是否符合要求：\n"
+                    f"1. 是否解决了原句中的所有语病问题\n"
+                    f"2. 是否遵循了最小变化原则\n"
+                    f"3. 是否引入了新的错误\n"
+                    f"4. 如果发现问题，请直接输出改进后的句子，无需解释\n"
+                    f"5. 如果结果正确，请直接输出原句\n\n"
+                    f"原句: {user_input}\n"
+                    f"初始纠错结果: {grammar_result}\n\n"
+                    f"请输出最终正确的句子:"
                 )
                 grammar_result = call_local_qwen(grammar_reflection_prompt)
 
             st.subheader("【语义纠错结果】")
             st.write(grammar_result)
+
+            # 添加语义纠错历史记录
+            st.session_state.chat_history.append({
+                "type": "语义纠错",
+                "input": user_input,
+                "corrected_output": grammar_result
+            })
+
+    # 显示历史记录
+    with st.expander("历史对话记录", expanded=False):
+        if not st.session_state.chat_history:
+            st.write("暂无历史记录。")
+        else:
+            for i, record in enumerate(st.session_state.chat_history[::-1], 1):
+                st.markdown(f"**记录 {i}**")
+                st.markdown(f"**类型：** {record['type']}")
+                st.markdown(f"**原始输入：** {record['input']}")
+                if record["type"] == "风格迁移":
+                    st.markdown(f"**参考片段：** {record['reference_excerpt']}...")
+                    st.markdown(f"**生成结果：** {record['adjusted_output']}")
+                else:
+                    st.markdown(f"**纠错结果：** {record['corrected_output']}")
+                st.markdown("---")
 
 if __name__ == "__main__":
     main()
