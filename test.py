@@ -178,28 +178,45 @@ def main():
             # 拼写纠错
             pinyin_info = get_pinyin_with_tone(user_input)
             spelling_prompt = (
-                "你是中文拼写纠错专家，请根据拼音信息判断并纠正文本中可能的拼写错误。\n"
+                ""你是中文拼写纠错专家，请根据拼音信息，判断并纠正中文文本中可能存在的拼写错误。\n"
+        "要求：\n1. 只输出纠正后的文本\n2. 若文本无误，则原样输出\n3. 避免引入新错误""
                 f"文本：{user_input}\n拼音：{pinyin_info}"
             )
             spelling_result = call_local_qwen(spelling_prompt)
 
             if ENABLE_SELF_REFLECTION:
                 reflection_prompt = (
-                    "你是中文拼写纠错检查员，请检查纠错结果是否符合要求，遵循最小变化原则，避免引入新错误。\n"
+                    f"请检查以下纠错结果是否符合要求：\n"
+            f"1. 是否解决了原句中的所有拼写问题\n"
+            f"2. 是否遵循了最小变化原则\n"
+            f"3. 是否引入了新的错误\n"
+            f"4. 如果发现问题，请直接输出改进后的句子，无需解释\n"
+            f"5. 如果结果正确，请直接输出原句\n\n"
+            f"原句: {user_input}\n"
+            f"初始纠错结果: {spelling_result}\n\n"
+            f"请输出最终正确的句子:"
                     f"原句: {user_input}\n初始纠错结果: {spelling_result}\n请输出最终正确的句子:"
                 )
                 spelling_result = call_local_qwen(reflection_prompt)
 
             syntax_report = generate_syntax_analysis(spelling_result)
             grammar_prompt = (
-                "你是一个优秀的中文语病纠错模型，请纠正以下句子中的语法问题，遵循最小改动原则。\n"
+                "你是一个优秀的中文语病纠错模型，你需要识别并纠正输入的句子中可能含有的语病错误并输出正确的句子，参考提供的句法分析报告，纠正时尽可能减少对原句子的改动，并符合最小变化原则，即保证进行的修改都是最小且必要的。你应该避免对句子结构或词汇表达进行不必要的修改。要求直接输出没有语法错误的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在语法错误，则直接输出原句即可。"
                 f"句子：{spelling_result}\n语法分析：\n{syntax_report}"
             )
             grammar_result = call_local_qwen(grammar_prompt)
 
             if ENABLE_SELF_REFLECTION:
                 grammar_reflection_prompt = (
-                    "你是语病检查员，请检查纠错结果是否符合要求，遵循最小变化原则，避免引入新错误。\n"
+                    "f"你是语病检查员,请检查以下纠错结果是否符合要求：\n"
+            f"1. 是否解决了原句中的所有语病问题\n"
+            f"2. 是否遵循了最小变化原则\n"
+            f"3. 是否引入了新的错误\n"
+            f"4. 如果发现问题，请直接输出改进后的句子，无需解释\n"
+            f"5. 如果结果正确，请直接输出原句\n\n"
+            f"原句: {user_input}\n"
+            f"初始纠错结果: {grammar_result}\n\n"
+            f"请输出最终正确的句子:""
                     f"原句: {user_input}\n初始纠错结果: {grammar_result}\n请输出最终正确的句子:"
                 )
                 grammar_result = call_local_qwen(grammar_reflection_prompt)
