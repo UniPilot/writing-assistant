@@ -214,7 +214,6 @@ def main():
                 f"文本：{user_input}\n拼音：{pinyin_info}"
             )
             spelling_result = call_local_qwen(spelling_prompt)
-            st.write(spelling_result)
             if ENABLE_SELF_REFLECTION:
                 reflection_prompt = (
                     f"请检查以下纠错结果是否符合要求：\n"
@@ -227,7 +226,6 @@ def main():
                     f"请直接输出最终正确的句子,不要给出其他多余文字:"
                 )
                 spelling_result = call_local_qwen(reflection_prompt)
-                st.write(spelling_result)
             syntax_report = generate_syntax_analysis(spelling_result)
             grammar_prompt = (
                 "你是一个优秀的中文语病纠错模型，你需要识别并纠正输入的句子中可能含有的语病错误并输出正确的句子，参考提供的句法分析报告，纠正时尽可能减少对原句子的改动，并符合最小变化原则，即保证进行的修改都是最小且必要的。你应该避免对句子结构或词汇表达进行不必要的修改。要求直接输出没有语法错误的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在语法错误，则直接输出原句即可。"
@@ -235,7 +233,6 @@ def main():
                 f"请直接输出正确的句子，不需要其他多余文字:"
             )
             grammar_result = call_local_qwen(grammar_prompt)
-            st.write(grammar_result)
             if ENABLE_SELF_REFLECTION:
                 grammar_reflection_prompt = (
                     f"你是语病检查员，请检查以下纠错结果是否符合要求：\n"
