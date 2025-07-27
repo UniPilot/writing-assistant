@@ -153,6 +153,8 @@ def generate_personalized_suggestions(focus_area,user_input_text):
 # ====== Streamlit App ======
 def main():
     st.title("学术写作智能助手")
+    ENABLE_SELF_REFLECTION = st.toggle("自我反思", value=True)
+    st.sidebar.markdown(f"当前自我反思状态: **{'启用' if ENABLE_SELF_REFLECTION else '关闭'}**")
 
     # 初始化历史记录
     if "chat_history" not in st.session_state:
