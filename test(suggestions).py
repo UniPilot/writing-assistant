@@ -166,7 +166,7 @@ def main():
         st.session_state.bert_tokenizer = tokenizer
         st.session_state.bert_model = model
 
-    feature = st.radio("请选择功能", ["风格迁移", "语义纠错","个性化建议"], horizontal=True)
+    feature = st.radio("请选择功能", ["文本纠错","风格迁移","个性化建议"], horizontal=True)
     user_input = st.text_area(f"请输入文本（当前功能：{feature}）", height=150)
 
     if st.button("执行"):
@@ -207,7 +207,7 @@ def main():
                 "adjusted_output": adjusted_similar
             })
 
-        elif feature == "语义纠错":
+        elif feature == "文本纠错":
             pinyin_info = get_pinyin_with_tone(user_input)
             spelling_prompt = (
                 "你是中文拼写纠错专家，请根据拼音信息，判断并纠正中文文本中可能存在的拼写错误,如果文本中有拼写错误，请直接输出修改后的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在拼写错误，则直接输出原句即可。"
