@@ -153,8 +153,6 @@ def generate_personalized_suggestions(focus_area,user_input_text):
 # ====== Streamlit App ======
 def main():
     st.title("学术写作智能助手")
-    ENABLE_SELF_REFLECTION = st.toggle("自我反思", value=True)
-    st.sidebar.markdown(f"当前自我反思状态: **{'启用' if ENABLE_SELF_REFLECTION else '关闭'}**")
 
     # 初始化历史记录
     if "chat_history" not in st.session_state:
@@ -168,7 +166,7 @@ def main():
         st.session_state.bert_tokenizer = tokenizer
         st.session_state.bert_model = model
 
-    feature = st.radio("请选择功能", ["文本纠错","风格迁移","个性化建议"], horizontal=True)
+    feature = st.radio("请选择功能", ["风格迁移", "语义纠错","个性化建议"], horizontal=True)
     user_input = st.text_area(f"请输入文本（当前功能：{feature}）", height=150)
 
     if st.button("执行"):
@@ -196,7 +194,6 @@ def main():
                 st.error(f"风格迁移错误: {e}")
                 return
 
-            st.subheader(">>> [方法A] 使用相似度最高的参考论文")
             st.write(f"相似度: {sim_score:.4f}")
             st.write(ref_doc.get('content', '')[:300] + "..." if ref_doc else "无参考文献")
             st.write(adjusted_similar)
@@ -209,11 +206,12 @@ def main():
                 "adjusted_output": adjusted_similar
             })
 
-        elif feature == "文本纠错":
+        elif feature == "语义纠错":
             pinyin_info = get_pinyin_with_tone(user_input)
             spelling_prompt = (
-                "你是中文拼写纠错专家，请根据拼音信息，判断并纠正中文文本中可能存在的拼写错误,如果文本中有拼写错误，请直接输出修改后的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在拼写错误，则直接输出原句即可。"
+                "你是中文拼写纠错专家，不需要判断文本内容是否合理，而是根据拼音信息，判断并纠正中文文本中可能存在的拼写错误,如果文本中有拼写错误，请直接输出修改后的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在拼写错误，则直接输出原句即可。"
                 f"文本：{user_input}\n拼音：{pinyin_info}"
+                f"请直接输出最终正确的句子,不要给出其他多余文字:"
             )
             spelling_result = call_local_qwen(spelling_prompt)
             if ENABLE_SELF_REFLECTION:
@@ -228,20 +226,28 @@ def main():
                     f"请直接输出最终正确的句子,不要给出其他多余文字:"
                 )
                 spelling_result = call_local_qwen(reflection_prompt)
-            syntax_report = generate_syntax_analysis(spelling_result)
-            grammar_prompt = (
-                "你是一个优秀的中文语病纠错模型，你需要识别并纠正输入的句子中可能含有的语病错误并输出正确的句子，参考提供的句法分析报告，纠正时尽可能减少对原句子的改动，并符合最小变化原则，即保证进行的修改都是最小且必要的。你应该避免对句子结构或词汇表达进行不必要的修改。要求直接输出没有语法错误的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在语法错误，则直接输出原句即可。"
-                f"句子：{spelling_result}\n语法分析：\n{syntax_report}"
-                f"请直接输出正确的句子，不需要其他多余文字:"
-            )
-            grammar_result = call_local_qwen(grammar_prompt)
+            if len(user_input) <= 150:
+                syntax_report = generate_syntax_analysis(spelling_result)
+                grammar_prompt = (
+                    f"你是一个优秀的中文语病纠错模型，参考提供的句法分析报告，你需要识别并纠正输入的文本中可能含有的语病错误并输出正确的文本，纠正时尽可能减少对原文本的改动，并符合最小变化原则，即保证进行的修改都是最小且必要的，你应该避免对文章结构或词汇表达风格进行的修改。要求直接输出没有语法错误的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在语法错误，则直接输出原句即可。"
+                    f"句子：{spelling_result}\n语法分析结果：\n{syntax_report}"
+                    f"请直接输出正确的文本,不要给出其他多余文字:"
+                )
+                grammar_result = call_local_qwen(grammar_prompt)
+            else:
+                grammar_prompt = (
+                    f"你是一个优秀的中文语病纠错模型，你需要识别并纠正输入的文本中可能含有的语病错误并输出正确的文本，纠正时尽可能减少对原文本的改动，并符合最小变化原则，即保证进行的修改都是最小且必要的，你应该避免对文章结构或词汇表达风格进行的修改。要求直接输出没有语法错误的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在语法错误，则直接输出原句即可。"
+                    f"句子：{spelling_result}\n"
+                    f"请直接输出正确的文本,不要给出其他多余文字:"
+                )
+                grammar_result = call_local_qwen(grammar_prompt)
             if ENABLE_SELF_REFLECTION:
                 grammar_reflection_prompt = (
                     f"你是语病检查员，请检查以下纠错结果是否符合要求：\n"
                     f"1. 是否解决了原句中的所有语病问题\n"
                     f"2. 是否遵循了最小变化原则\n"
                     f"3. 是否引入了新的错误\n"
-                    f"4. 如果发现问题，请直接输出改进后的句子，无需解释；如果结果正确，请直接输出原句,不需要说明\n"
+                    f"4. 如果发现问题，请直接输出改进后的句子，无需解释；如果用户初始纠错结果正确，请直接输出初始纠错结果,不需要说明\n"
                     f"原句: {user_input}\n"
                     f"初始纠错结果: {grammar_result}\n\n"
                     f"请直接输出最终正确的句子，不需要其他多余文字:"
