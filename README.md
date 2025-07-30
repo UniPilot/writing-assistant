@@ -50,7 +50,7 @@ python -m spacy download zh_core_web_sm
 # 程序运行
 本地环境被激活以及大模型通过命令行调用正常后，终端输入
 ```bash
-streamlit run test.py
+streamlit run final.py
 ```
 即可运行程序，并自动导航到浏览器前端页面进行交互
 
