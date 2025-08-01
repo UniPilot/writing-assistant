@@ -27,7 +27,7 @@ ollama run qwen2.5:14b
 ```
 你将看到模型等待输入提示，说明部署成功。
 # 创建文件
-下载test.py以及requirments.txt到空文件夹后
+下载final.py以及requirments.txt到空文件夹后
 
 命令行导航到目录文件夹（该空文件夹）
 
