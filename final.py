@@ -146,7 +146,41 @@ def summarize_user_focus_area():
     interest_tags = call_local_qwen(prompt)
     st.session_state["interest_tags"] = interest_tags
     return interest_tags
+def generate_paper_overview_from_history():
+    history_texts = [m["input"] for m in st.session_state.chat_history if m["type"] in ["风格迁移", "语义纠错"]]
+    if not history_texts:
+        return {
+            "研究目的": "暂无",
+            "相关工作": "暂无",
+            "实验内容": "暂无",
+            "结论": "暂无",
+            "未来方向": "暂无"
+        }
 
+    overview_prompt = (
+        "你是一名学术助手，接下来我会提供多段用户的写作内容（来自用户历史提问），请你帮我根据这些内容，提取出一篇完整论文应包括的五个部分："
+        "研究目的、相关工作、实验内容、结论、未来方向。\n\n"
+        "如果无法从文本中提取某一部分，请写“暂无”。请使用如下格式输出：\n\n"
+        "研究目的：...\n相关工作：...\n实验内容：...\n结论：...\n未来方向：...\n\n"
+        f"以下是用户历史内容：\n{chr(10).join(history_texts)}"
+    )
+    response = call_local_qwen(overview_prompt)
+    sections = {
+        "研究目的": "暂无",
+        "相关工作": "暂无",
+        "实验内容": "暂无",
+        "结论": "暂无",
+        "未来方向": "暂无"
+    }
+    for key in sections:
+        if f"{key}：" in response:
+            try:
+                content = response.split(f"{key}：")[1].split("\n")[0].strip()
+                if content:
+                    sections[key] = content
+            except:
+                pass
+    return sections
 
 def generate_personalized_suggestions(focus_area, user_input_text):
     prompt = (
@@ -256,15 +290,19 @@ def main():
                 if not any(chat['type'] in ["风格迁移", "语义纠错"] for chat in st.session_state.chat_history):
                     suggestions = "暂无历史记录，无法生成个性化建议。请先使用“文本纠错”或“风格迁移”功能。"
                 else:
-                    focus_area = summarize_user_focus_area()
-                    recent_inputs = [rec["input"] for rec in st.session_state.chat_history if
-                                     rec["type"] in ["风格迁移", "语义纠错"]]
-                    # 将列表合并为单个文本块
-                    input_text_for_suggestion = "\n\n---\n\n".join(recent_inputs)
-                    suggestions = generate_personalized_suggestions(focus_area, input_text_for_suggestion)
-
+                    overview = generate_paper_overview_from_history()
+                    overview_text = "\n".join([f"{k}：{v}" for k, v in overview.items()])
+                    prompt = (
+                        f"以下是用户当前撰写的文本：\n{input_text}\n\n"
+                        f"以下是根据用户历史写作提取的论文概览信息：\n{overview_text}\n\n"
+                        "请你结合用户当前文本与这些概览信息，指出其文本内容存在的主要问题，"
+                        "并提供详细建议和修改方向。你可以引用概览内容作为参考来判断当前文本是否偏离原意或风格。请直接用“你”来称呼用户，格式清晰、条理明确。"
+                    )
+                    suggestions = call_local_qwen(prompt)
                 # 将最终结果保存到 chat_history
                 st.session_state.chat_history[-1]["suggestions"] = suggestions
+        # 所有分支处理完成后，统一重新运行以刷新界面
+        st.rerun()
 
         # 所有分支处理完成后，统一重新运行以刷新界面
         st.rerun()
