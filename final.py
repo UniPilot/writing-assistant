@@ -9,6 +9,8 @@ from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 import certifi
 import random
+from highlight import diff_highlight
+
 
 # ================== 配置 & 全局常量 ==================
 QWEN_MODEL_NAME = "qwen2.5:14b"
@@ -180,9 +182,15 @@ def main():
     for chat in st.session_state.chat_history:
         with st.chat_message("user"):
             st.markdown(chat["input"])
-        output = chat.get("corrected_output") or chat.get("adjusted_output") or chat.get("suggestions")
-        if output:
-            with st.chat_message("assistant"):
+        # 始终先获取 output
+        output = chat.get("highlight_html") or chat.get("corrected_output") or chat.get("adjusted_output") or chat.get(
+            "suggestions") or ""
+
+        # 显示 assistant 内容（如果有高亮的HTML就unsafe）
+        with st.chat_message("assistant"):
+            if chat.get("highlight_html"):
+                st.markdown(chat["highlight_html"], unsafe_allow_html=True)
+            else:
                 st.markdown(output)
 
     # 使用 st.chat_input 替代 text_area 和 button
@@ -198,7 +206,7 @@ def main():
                 pinyin_info = get_pinyin_with_tone(input_text)
                 spelling_prompt = (
                     f"你是中文拼写纠错专家，不需要判断文本内容是否合理，而是根据拼音信息，判断并纠正中文文本中可能存在的拼写错误,如果文本中有拼写错误，请直接输出修改后的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在拼写错误，则直接输出原句即可。文本：{input_text}\n拼音：{pinyin_info}请直接输出最终正确的句子,不要给出其他多余文字:")
-                spelling_result = call_local_qwen(spelling_prompt)
+                spelling_result =call_local_qwen(spelling_prompt)
 
                 if enable_self_reflection:
                     reflection_prompt = (
@@ -221,7 +229,11 @@ def main():
                     grammar_result = call_local_qwen(grammar_reflection_prompt)
 
                 # 将最终结果保存到 chat_history
+                # 高亮版本
+                highlight_html = diff_highlight(input_text, grammar_result)
                 st.session_state.chat_history[-1]["corrected_output"] = grammar_result
+                st.session_state.chat_history[-1]["highlight_html"] = highlight_html
+
 
             # 分支二：风格迁移
             elif feature == "风格迁移":
