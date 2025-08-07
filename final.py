@@ -87,9 +87,9 @@ def call_local_qwen(prompt: str) -> str:
 def get_embedding(text, tokenizer, model):
     tokens = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=512)
     with torch.no_grad(): outputs = model(**tokens)
-    return outputs.last_hidden_state[:, 0, :]
-
-
+    #return outputs.last_hidden_state[:, 0, :]
+    return torch.mean(outputs.last_hidden_state, dim=1)
+'''
 def find_most_similar(input_text, collection, tokenizer, model):
     input_embedding = get_embedding(input_text, tokenizer, model)
     max_similarity = -1
@@ -102,8 +102,28 @@ def find_most_similar(input_text, collection, tokenizer, model):
             max_similarity = similarity
             most_similar_article = doc
     return most_similar_article, max_similarity
-
-
+'''
+'''
+def find_top_similar_articles(input_text, collection, tokenizer, model, top_n=3):
+    input_embedding = get_embedding(input_text, tokenizer, model)
+    top_articles = []
+    
+    for doc in collection.find():
+        if 'content' not in doc:
+            continue
+    
+    for doc in collection.find().limit(100):
+        if 'content' not in doc or not doc['content']: continue
+        db_embedding = get_embedding(doc['content'], tokenizer, model)
+        similarity = F.cosine_similarity(input_embedding, db_embedding).item()
+        top_articles.append((doc, similarity))
+        if len(top_articles) > top_n:
+            top_articles.sort(key=lambda x: x[1], reverse=True)
+            top_articles = top_articles[:top_n]
+    top_articles.sort(key=lambda x: x[1], reverse=True)
+    return top_articles
+'''
+'''
 def find_random_article(collection):
     pipeline = [{"$match": {"content": {"$exists": True}}}, {"$sample": {"size": 1}}]
     try:
@@ -112,11 +132,11 @@ def find_random_article(collection):
     except Exception:
         docs = list(collection.find({"content": {"$exists": True}}))
         return random.choice(docs) if docs else None
-
+'''
 
 def adjust_writing_style_local(input_text, reference_text):
     prompt = (
-        f"你是一名学术写作专家，擅长根据参考论文调整文本风格。请尽最大可能保持原文内容，只修改写作风格，但修改用词、句式和结构以尽量匹配参考论文的学术风格。只借鉴参考论文的学术风格，不借鉴参考论文的内容。\n参考论文片段：\n{reference_text[:2000]}...\n\n请修改以下文章使其符合参考论文的学术风格：\n{input_text}")
+        f"你是一名学术写作专家，擅长根据参考论文调整文本风格。请尽最大可能保持原文内容，不要增加原文没有的内容，只修改写作风格，但修改用词、句式和结构以尽量匹配参考论文的学术风格。只借鉴参考论文的学术风格，不借鉴参考论文的内容。\n参考论文片段：\n{reference_text[:2000]}...\n\n请修改以下文章使其符合参考论文的学术风格：\n{input_text}")
     return call_local_qwen(prompt)
 
 
@@ -273,7 +293,7 @@ def main():
             elif feature == "风格迁移":
                 db = st.session_state.mongodb_client.get_database("paper")
                 collection = db.get_collection("papers")
-                ref_doc, sim_score = find_most_similar(input_text, collection, st.session_state.bert_tokenizer,
+                '''ref_doc, sim_score = find_most_similar(input_text, collection, st.session_state.bert_tokenizer,
                                                        st.session_state.bert_model)
 
                 if ref_doc:
@@ -281,7 +301,42 @@ def main():
                     output_message = f"**根据风格相似度最高的论文（相似度: {sim_score:.4f}）优化后：**\n\n---\n\n{adjusted_similar}"
                 else:
                     output_message = "抱歉，数据库中未能找到相似的参考论文。请尝试其他文本或检查数据库。"
-
+                '''
+                top_articles = []
+                input_embedding = get_embedding(input_text, st.session_state.bert_tokenizer, st.session_state.bert_model)
+                
+                for doc in collection.find().limit(100):
+                    if 'content' not in doc or not doc['content']: continue
+                    db_embedding = get_embedding(doc['content'], st.session_state.bert_tokenizer, st.session_state.bert_model)
+                    similarity = F.cosine_similarity(input_embedding, db_embedding).item()
+                    top_articles.append((doc, similarity))
+                    if len(top_articles) > 3:
+                        top_articles.sort(key=lambda x: x[1], reverse=True)
+                        top_articles = top_articles[:3]
+                
+                top_articles.sort(key=lambda x: x[1], reverse=True)
+                
+                if top_articles:
+                    # 提取前三篇文章的内容
+                    reference_texts = [article[0]['content'] for article in top_articles]
+                    # 修改提示词以参考多篇文章
+                    prompt = (
+                        f"你是一名学术写作专家，擅长根据多篇参考论文调整文本风格。请综合分析多篇参考论文的写作风格，"
+                        f"尽可能保持原文内容，不要增加原文没有的内容，只修改写作风格。"
+                        f"修改用词、句式和结构以尽量匹配参考论文的综合学术风格。"
+                        f"只借鉴参考论文的学术风格，不借鉴参考论文的内容。\n\n"
+                        f"参考论文1片段：\n{reference_texts[0][:2000]}...\n\n"
+                        f"参考论文2片段：\n{reference_texts[1][:2000]}...\n\n"
+                        f"参考论文3片段：\n{reference_texts[2][:2000]}...\n\n"
+                        f"请综合分析以上3篇参考论文的写作风格，修改以下文章使其符合类似的学术风格：\n{input_text}"
+                    )
+                    
+                    adjusted_similar = call_local_qwen(prompt)
+                    
+                    # 保持原有输出格式，只显示最高相似度的分数
+                    output_message = f"**根据风格相似度最高的3篇论文（最高相似度: {top_articles[0][1]:.4f}）优化后：**\n\n---\n\n{adjusted_similar}"
+                else:
+                    output_message = "抱歉，数据库中未能找到相似的参考论文。请尝试其他文本或检查数据库。"
                 # 将最终结果保存到 chat_history
                 st.session_state.chat_history[-1]["adjusted_output"] = output_message
 
