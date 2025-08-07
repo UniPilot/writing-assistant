@@ -123,7 +123,7 @@ def find_top_similar_articles(input_text, collection, tokenizer, model, top_n=3)
     top_articles.sort(key=lambda x: x[1], reverse=True)
     return top_articles
 '''
-'''
+
 def find_random_article(collection):
     pipeline = [{"$match": {"content": {"$exists": True}}}, {"$sample": {"size": 1}}]
     try:
@@ -132,7 +132,7 @@ def find_random_article(collection):
     except Exception:
         docs = list(collection.find({"content": {"$exists": True}}))
         return random.choice(docs) if docs else None
-'''
+
 
 def adjust_writing_style_local(input_text, reference_text):
     prompt = (
