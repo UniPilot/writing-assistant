@@ -89,7 +89,7 @@ def get_embedding(text, tokenizer, model):
     with torch.no_grad(): outputs = model(**tokens)
     #return outputs.last_hidden_state[:, 0, :]
     return torch.mean(outputs.last_hidden_state, dim=1)
-'''
+
 def find_most_similar(input_text, collection, tokenizer, model):
     input_embedding = get_embedding(input_text, tokenizer, model)
     max_similarity = -1
@@ -102,7 +102,7 @@ def find_most_similar(input_text, collection, tokenizer, model):
             max_similarity = similarity
             most_similar_article = doc
     return most_similar_article, max_similarity
-'''
+
 '''
 def find_top_similar_articles(input_text, collection, tokenizer, model, top_n=3):
     input_embedding = get_embedding(input_text, tokenizer, model)
@@ -293,7 +293,7 @@ def main():
             elif feature == "风格迁移":
                 db = st.session_state.mongodb_client.get_database("paper")
                 collection = db.get_collection("papers")
-                '''ref_doc, sim_score = find_most_similar(input_text, collection, st.session_state.bert_tokenizer,
+                ref_doc, sim_score = find_most_similar(input_text, collection, st.session_state.bert_tokenizer,
                                                        st.session_state.bert_model)
 
                 if ref_doc:
@@ -337,6 +337,7 @@ def main():
                     output_message = f"**根据风格相似度最高的3篇论文（最高相似度: {top_articles[0][1]:.4f}）优化后：**\n\n---\n\n{adjusted_similar}"
                 else:
                     output_message = "抱歉，数据库中未能找到相似的参考论文。请尝试其他文本或检查数据库。"
+                    '''
                 # 将最终结果保存到 chat_history
                 st.session_state.chat_history[-1]["adjusted_output"] = output_message
 
