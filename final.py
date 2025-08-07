@@ -298,7 +298,7 @@ def main():
 
                 if ref_doc:
                     adjusted_similar = adjust_writing_style_local(input_text, ref_doc.get('content', ''))
-                    output_message = f"**根据风格相似度最高的论文（相似度: {sim_score:.4f}）优化后：**\n\n---\n\n{adjusted_similar}"
+                    output_message = f"**根据风格相似度最高的三篇论文（最高相似度: {sim_score:.4f}）优化后：**\n\n---\n\n{adjusted_similar}"
                 else:
                     output_message = "抱歉，数据库中未能找到相似的参考论文。请尝试其他文本或检查数据库。"
                 '''
