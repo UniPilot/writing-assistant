@@ -263,9 +263,9 @@ def main():
     # 使用 st.chat_input 替代 text_area 和 button
         if input_text := st.chat_input("请输入您要处理的文本..."):
         # 将用户输入添加到历史记录
-        st.session_state.chat_history.append({"type": st.session_state.feature_selection, "input": input_text})
+            st.session_state.chat_history.append({"type": st.session_state.feature_selection, "input": input_text})
 
-        with st.spinner("AI 正在处理，请稍候..."):
+            with st.spinner("AI 正在处理，请稍候..."):
             feature = st.session_state.feature_selection
 
             # 分支一：文本纠错
