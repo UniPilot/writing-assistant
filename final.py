@@ -243,7 +243,7 @@ def main():
             if reference_text := st.chat_input("范文："):
                 st.session_state.reference_text = reference_text
                 st.session_state.chat_history.append({"type": "风格迁移", "input": f"范文：{reference_text}"})
-                st.rerun()
+            st.rerun()
         else:
             # 第二步：输入待修改文章
             if input_text := st.chat_input("待修改文章："):
@@ -257,7 +257,7 @@ def main():
                     # 将最终结果保存到 chat_history
                     st.session_state.chat_history[-1]["adjusted_output"] = output_message
                     del st.session_state.reference_text  # 清除临时存储的范文
-                    st.rerun()
+            st.rerun()
     else:
 #2025.8.9添加    
     # 使用 st.chat_input 替代 text_area 和 button
