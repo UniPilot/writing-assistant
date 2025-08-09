@@ -205,6 +205,15 @@ def main():
     with st.sidebar:
         st.title("功能选择")
         feature = st.radio("请选择功能", ["文本纠错", "风格迁移", "个性化建议"], key="feature_selection")
+        #2025.8.9
+        # 风格迁移的子选项
+        if feature == "风格迁移":
+            style_transfer_mode = st.radio(
+                "风格迁移模式",
+                ["自动匹配范文", "手动提供范文"],
+                key="style_transfer_mode"
+            )
+        #2025.8.9
         enable_self_reflection = st.toggle("自我反思功能", value=True) if feature == "文本纠错" else False
         st.markdown("---")
         st.subheader("聊天历史")
@@ -225,7 +234,32 @@ def main():
                 st.markdown(chat["highlight_html"], unsafe_allow_html=True)
             else:
                 st.markdown(output)
-
+#2025.8.9添加
+    # 根据选择的模式显示不同的输入界面
+    if st.session_state.feature_selection == "风格迁移" and hasattr(st.session_state, "style_transfer_mode") and st.session_state.style_transfer_mode == "手动提供范文":
+        # 手动提供范文模式 - 分两步输入
+        if "reference_text" not in st.session_state:
+            # 第一步：输入范文
+            if reference_text := st.chat_input("范文："):
+                st.session_state.reference_text = reference_text
+                st.session_state.chat_history.append({"type": "风格迁移", "input": f"范文：{reference_text}"})
+                st.rerun()
+        else:
+            # 第二步：输入待修改文章
+            if input_text := st.chat_input("待修改文章："):
+                st.session_state.chat_history.append({"type": "风格迁移", "input": f"待修改文章：{input_text}"})
+                
+                with st.spinner("AI 正在处理，请稍候..."):
+                    # 调用风格迁移函数
+                    adjusted_similar = adjust_writing_style_local(input_text, st.session_state.reference_text)
+                    output_message = f"**根据您提供的范文优化后：**\n\n---\n\n{adjusted_similar}"
+                    
+                    # 将最终结果保存到 chat_history
+                    st.session_state.chat_history[-1]["adjusted_output"] = output_message
+                    del st.session_state.reference_text  # 清除临时存储的范文
+                    st.rerun()
+    else:
+#2025.8.9添加    
     # 使用 st.chat_input 替代 text_area 和 button
     if input_text := st.chat_input("请输入您要处理的文本..."):
         # 将用户输入添加到历史记录
