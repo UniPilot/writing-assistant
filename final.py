@@ -267,74 +267,73 @@ def main():
 
             with st.spinner("AI 正在处理，请稍候..."):
                 feature = st.session_state.feature_selection
-
-            # 分支一：文本纠错
-            if feature == "文本纠错":
-                pinyin_info = get_pinyin_with_tone(input_text)
-                spelling_prompt = (
-                    f"你是中文拼写纠错专家，不需要判断文本内容是否合理，而是根据拼音信息，判断并纠正中文文本中可能存在的拼写错误,如果文本中有拼写错误，请直接输出修改后的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在拼写错误，则直接输出原句即可。文本：{input_text}\n拼音：{pinyin_info}请直接输出最终正确的句子,不要给出其他多余文字:")
-                spelling_result =call_local_qwen(spelling_prompt)
-
-                if enable_self_reflection:
-                    reflection_prompt = (
-                        f"请检查以下纠错结果是否符合要求：\n1. 是否解决了原句中的所有拼写问题\n2. 是否遵循了最小变化原则\n3. 是否引入了新的错误\n4. 如果发现问题，请直接输出改进后的句子，无需解释;如果结果正确，请直接输出原句\n原句: {input_text}\n初始纠错结果: {spelling_result}\n\n请直接输出最终正确的句子,不要给出其他多余文字:")
-                    spelling_result = call_local_qwen(reflection_prompt)
-
-                if len(input_text) <= 150:
-                    syntax_report = generate_syntax_analysis(spelling_result, st.session_state.spacy_model)
-                    grammar_prompt = (
-                        f"你是一个优秀的中文语病纠错模型，参考提供的句法分析报告，你需要识别并纠正输入的文本中可能含有的语病错误并输出正确的文本，纠正时尽可能减少对原文本的改动，并符合最小变化原则，即保证进行的修改都是最小且必要的，你应该避免对文章结构或词汇表达风格进行的修改。要求直接输出没有语法错误的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在语法错误，则直接输出原句即可。句子：{spelling_result}\n语法分析结果：\n{syntax_report}请直接输出正确的文本,不要给出其他多余文字:")
-                    grammar_result = call_local_qwen(grammar_prompt)
-                else:
-                    grammar_prompt = (
-                        f"你是一个优秀的中文语病纠错模型，你需要识别并纠正输入的文本中可能含有的语病错误并输出正确的文本，纠正时尽可能减少对原文本的改动，并符合最小变化原则，即保证进行的修改都是最小且必要的，你应该避免对文章结构或词汇表达风格进行的修改。要求直接输出没有语法错误的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在语法错误，则直接输出原句即可。句子：{spelling_result}\n请直接输出正确的文本,不要给出其他多余文字:")
-                    grammar_result = call_local_qwen(grammar_prompt)
-
-                if enable_self_reflection:
-                    grammar_reflection_prompt = (
-                        f"你是语病检查员，请检查以下纠错结果是否符合要求：\n1. 是否解决了原句中的所有语病问题\n2. 是否遵循了最小变化原则\n3. 是否引入了新的错误\n4. 如果发现问题，请直接输出改进后的句子，无需解释；如果用户初始纠错结果正确，请直接输出初始纠错结果,不需要说明\n原句: {input_text}\n初始纠错结果: {grammar_result}\n\n请直接输出最终正确的句子，不需要其他多余文字:")
-                    grammar_result = call_local_qwen(grammar_reflection_prompt)
-
-                # 将最终结果保存到 chat_history
-                # 高亮版本
-                highlight_html = diff_highlight(input_text, grammar_result)
-                st.session_state.chat_history[-1]["corrected_output"] = grammar_result
-                st.session_state.chat_history[-1]["highlight_html"] = highlight_html
-
-
-            # 分支二：风格迁移
-            elif feature == "风格迁移":
-                db = st.session_state.mongodb_client.get_database("paper")
-                collection = db.get_collection("paper_segments")
-                ref_doc, sim_score = find_most_similar(input_text, collection, st.session_state.bert_tokenizer,
-                                                       st.session_state.bert_model)
-
-                if ref_doc:
-                    adjusted_similar = adjust_writing_style_local(input_text, ref_doc.get('content', ''))
-                    output_message = f"**根据风格相似度最高的三篇论文（最高相似度: {sim_score:.4f}）优化后：**\n\n---\n\n{adjusted_similar}"
-                else:
-                    output_message = "抱歉，数据库中未能找到相似的参考论文。请尝试其他文本或检查数据库。"
-                # 将最终结果保存到 chat_history
-                st.session_state.chat_history[-1]["adjusted_output"] = output_message
-
-            # 分支三：个性化建议
-            elif feature == "个性化建议":
-                if not any(chat['type'] in ["风格迁移", "语义纠错"] for chat in st.session_state.chat_history):
-                    suggestions = "暂无历史记录，无法生成个性化建议。请先使用“文本纠错”或“风格迁移”功能。"
-                else:
-                    overview = generate_paper_overview_from_history()
-                    overview_text = "\n".join([f"{k}：{v}" for k, v in overview.items()])
-                    prompt = (
-                        f"以下是用户当前撰写的文本：\n{input_text}\n\n"
-                        f"以下是根据用户历史写作提取的论文概览信息：\n{overview_text}\n\n"
-                        "请你结合用户当前文本与这些概览信息，指出其文本内容存在的主要问题，"
-                        "并提供详细建议和修改方向。你可以引用概览内容作为参考来判断当前文本是否偏离原意或风格。请直接用“你”来称呼用户，格式清晰、条理明确。"
-                    )
-                    suggestions = call_local_qwen(prompt)
-                # 将最终结果保存到 chat_history
-                st.session_state.chat_history[-1]["suggestions"] = suggestions
-        # 所有分支处理完成后，统一重新运行以刷新界面
-        st.rerun()
+    
+                # 分支一：文本纠错
+                if feature == "文本纠错":
+                    pinyin_info = get_pinyin_with_tone(input_text)
+                    spelling_prompt = (
+                        f"你是中文拼写纠错专家，不需要判断文本内容是否合理，而是根据拼音信息，判断并纠正中文文本中可能存在的拼写错误,如果文本中有拼写错误，请直接输出修改后的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在拼写错误，则直接输出原句即可。文本：{input_text}\n拼音：{pinyin_info}请直接输出最终正确的句子,不要给出其他多余文字:")
+                    spelling_result =call_local_qwen(spelling_prompt)
+    
+                    if enable_self_reflection:
+                        reflection_prompt = (
+                            f"请检查以下纠错结果是否符合要求：\n1. 是否解决了原句中的所有拼写问题\n2. 是否遵循了最小变化原则\n3. 是否引入了新的错误\n4. 如果发现问题，请直接输出改进后的句子，无需解释;如果结果正确，请直接输出原句\n原句: {input_text}\n初始纠错结果: {spelling_result}\n\n请直接输出最终正确的句子,不要给出其他多余文字:")
+                        spelling_result = call_local_qwen(reflection_prompt)
+    
+                    if len(input_text) <= 150:
+                        syntax_report = generate_syntax_analysis(spelling_result, st.session_state.spacy_model)
+                        grammar_prompt = (
+                            f"你是一个优秀的中文语病纠错模型，参考提供的句法分析报告，你需要识别并纠正输入的文本中可能含有的语病错误并输出正确的文本，纠正时尽可能减少对原文本的改动，并符合最小变化原则，即保证进行的修改都是最小且必要的，你应该避免对文章结构或词汇表达风格进行的修改。要求直接输出没有语法错误的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在语法错误，则直接输出原句即可。句子：{spelling_result}\n语法分析结果：\n{syntax_report}请直接输出正确的文本,不要给出其他多余文字:")
+                        grammar_result = call_local_qwen(grammar_prompt)
+                    else:
+                        grammar_prompt = (
+                            f"你是一个优秀的中文语病纠错模型，你需要识别并纠正输入的文本中可能含有的语病错误并输出正确的文本，纠正时尽可能减少对原文本的改动，并符合最小变化原则，即保证进行的修改都是最小且必要的，你应该避免对文章结构或词汇表达风格进行的修改。要求直接输出没有语法错误的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在语法错误，则直接输出原句即可。句子：{spelling_result}\n请直接输出正确的文本,不要给出其他多余文字:")
+                        grammar_result = call_local_qwen(grammar_prompt)
+    
+                    if enable_self_reflection:
+                        grammar_reflection_prompt = (
+                            f"你是语病检查员，请检查以下纠错结果是否符合要求：\n1. 是否解决了原句中的所有语病问题\n2. 是否遵循了最小变化原则\n3. 是否引入了新的错误\n4. 如果发现问题，请直接输出改进后的句子，无需解释；如果用户初始纠错结果正确，请直接输出初始纠错结果,不需要说明\n原句: {input_text}\n初始纠错结果: {grammar_result}\n\n请直接输出最终正确的句子，不需要其他多余文字:")
+                        grammar_result = call_local_qwen(grammar_reflection_prompt)
+    
+                    # 将最终结果保存到 chat_history
+                    # 高亮版本
+                    highlight_html = diff_highlight(input_text, grammar_result)
+                    st.session_state.chat_history[-1]["corrected_output"] = grammar_result
+                    st.session_state.chat_history[-1]["highlight_html"] = highlight_html
+    
+    
+                # 分支二：风格迁移
+                elif feature == "风格迁移":
+                    db = st.session_state.mongodb_client.get_database("paper")
+                    collection = db.get_collection("paper_segments")
+                    ref_doc, sim_score = find_most_similar(input_text, collection, st.session_state.bert_tokenizer,
+                                                           st.session_state.bert_model)
+    
+                    if ref_doc:
+                        adjusted_similar = adjust_writing_style_local(input_text, ref_doc.get('content', ''))
+                        output_message = f"**根据风格相似度最高的三篇论文（最高相似度: {sim_score:.4f}）优化后：**\n\n---\n\n{adjusted_similar}"
+                    else:
+                        output_message = "抱歉，数据库中未能找到相似的参考论文。请尝试其他文本或检查数据库。"
+                    # 将最终结果保存到 chat_history
+                    st.session_state.chat_history[-1]["adjusted_output"] = output_message
+    
+                # 分支三：个性化建议
+                elif feature == "个性化建议":
+                    if not any(chat['type'] in ["风格迁移", "语义纠错"] for chat in st.session_state.chat_history):
+                        suggestions = "暂无历史记录，无法生成个性化建议。请先使用“文本纠错”或“风格迁移”功能。"
+                    else:
+                        overview = generate_paper_overview_from_history()
+                        overview_text = "\n".join([f"{k}：{v}" for k, v in overview.items()])
+                        prompt = (
+                            f"以下是用户当前撰写的文本：\n{input_text}\n\n"
+                            f"以下是根据用户历史写作提取的论文概览信息：\n{overview_text}\n\n"
+                            "请你结合用户当前文本与这些概览信息，指出其文本内容存在的主要问题，"
+                            "并提供详细建议和修改方向。你可以引用概览内容作为参考来判断当前文本是否偏离原意或风格。请直接用“你”来称呼用户，格式清晰、条理明确。"
+                        )
+                        suggestions = call_local_qwen(prompt)
+                    # 将最终结果保存到 chat_history
+                    st.session_state.chat_history[-1]["suggestions"] = suggestions
+        
 
         # 所有分支处理完成后，统一重新运行以刷新界面
         st.rerun()
