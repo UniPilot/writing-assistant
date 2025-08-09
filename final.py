@@ -243,7 +243,7 @@ def main():
             if reference_text := st.chat_input("范文："):
                 st.session_state.reference_text = reference_text
                 st.session_state.chat_history.append({"type": "风格迁移", "input": f"范文：{reference_text}"})
-            st.rerun()
+            
         else:
             # 第二步：输入待修改文章
             if input_text := st.chat_input("待修改文章："):
