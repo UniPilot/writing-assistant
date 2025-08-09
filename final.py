@@ -266,7 +266,7 @@ def main():
             st.session_state.chat_history.append({"type": st.session_state.feature_selection, "input": input_text})
 
             with st.spinner("AI 正在处理，请稍候..."):
-            feature = st.session_state.feature_selection
+                feature = st.session_state.feature_selection
 
             # 分支一：文本纠错
             if feature == "文本纠错":
