@@ -271,7 +271,7 @@ def main():
             # 分支二：风格迁移
             elif feature == "风格迁移":
                 db = st.session_state.mongodb_client.get_database("paper")
-                collection = db.get_collection("papers")
+                collection = db.get_collection("paper_segments")
                 ref_doc, sim_score = find_most_similar(input_text, collection, st.session_state.bert_tokenizer,
                                                        st.session_state.bert_model)
 
