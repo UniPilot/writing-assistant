@@ -261,7 +261,7 @@ def main():
     else:
 #2025.8.9添加    
     # 使用 st.chat_input 替代 text_area 和 button
-    if input_text := st.chat_input("请输入您要处理的文本..."):
+        if input_text := st.chat_input("请输入您要处理的文本..."):
         # 将用户输入添加到历史记录
         st.session_state.chat_history.append({"type": st.session_state.feature_selection, "input": input_text})
 
