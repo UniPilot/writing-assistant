@@ -11,10 +11,15 @@ import certifi
 import random
 from highlight import diff_highlight
 import hashlib
+import requests
+import json
 
 # ================== 配置 & 全局常量 ==================
 QWEN_MODEL_NAME = "qwen2.5:14b"
 MODEL_TIMEOUT = 180
+API_KEY = "8edcf524a7ce1552d310f6e5b797bc8a2314bdcc"  # 个人 Access Token
+BASE_URL = "https://aistudio.baidu.com/llm/lmapi/v3"
+MODEL_NAME = "ernie-4.5-turbo-128k-preview"
 
 
 # ================== 资源加载与缓存 ==================
@@ -40,32 +45,84 @@ def hash_password(password: str) -> str:
     """密码哈希"""
     return hashlib.sha256(password.encode()).hexdigest()
 
+
+def get_user_collection():
+    """获取用户集合"""
+    client = st.session_state.mongodb_client
+    db = client.get_database("paper")
+    return db.get_collection("users")
+
+
+def register_user(username, password):
+    """注册新用户"""
+    users = get_user_collection()
+    if users.find_one({"username": username}):
+        return False, "用户名已存在"
+    users.insert_one({"username": username, "password": hash_password(password)})
+    return True, "注册成功"
+
+
+def authenticate_user(username, password):
+    """验证用户"""
+    users = get_user_collection()
+    user = users.find_one({"username": username})
+    if user and user["password"] == hash_password(password):
+        return True
+    return False
+
+
+def login_or_register():
+    """登录 / 注册界面"""
+    st.markdown("### 🔐 用户登录/注册")
+    mode = st.radio("选择操作", ["登录", "注册"], horizontal=True)
+    username = st.text_input("用户名")
+    password = st.text_input("密码", type="password")
+
+    if mode == "注册":
+        if st.button("注册"):
+            success, msg = register_user(username, password)
+            if success:
+                st.success(msg)
+                st.session_state.username = username
+                st.rerun()
+            else:
+                st.error(msg)
+    else:  # 登录模式
+        if st.button("登录"):
+            if authenticate_user(username, password):
+                st.session_state.username = username
+                st.success(f"欢迎回来，{username}！")
+                st.rerun()
+            else:
+                st.error("用户名或密码错误！")
+
+
+def check_login():
+    """检查登录状态"""
+    if "username" not in st.session_state:
+        login_or_register()
+        st.stop()
 def login_register():
+    if 'users' not in st.session_state:
+        st.session_state.users = {}
     st.sidebar.title("用户登录 / 注册")
     mode = st.sidebar.selectbox("选择操作", ["登录", "注册"])
     username = st.sidebar.text_input("用户名")
     password = st.sidebar.text_input("密码", type="password")
-
     if st.sidebar.button(mode):
         if not username or not password:
             st.sidebar.warning("用户名和密码不能为空")
             return False
-        users_collection = st.session_state.mongodb_client.get_database("paper").get_collection("users")
-
         if mode == "注册":
-            if users_collection.find_one({"username": username}):
+            if username in st.session_state.users:
                 st.sidebar.error("用户已存在")
             else:
-                users_collection.insert_one({
-                    "username": username,
-                    "password": hash_password(password)
-                })
+                st.session_state.users[username] = hash_password(password)
                 st.sidebar.success("注册成功，请登录")
-        else:  # 登录
-            user = users_collection.find_one({"username": username})
-            if not user:
+        else:
+            if username not in st.session_state.users:
                 st.sidebar.error("用户不存在，请先注册")
-            elif user["password"] != hash_password(password):
+            elif st.session_state.users[username] != hash_password(password):
                 st.sidebar.error("密码错误")
             else:
                 st.session_state.username = username
@@ -73,25 +130,6 @@ def login_register():
                 return True
     return 'username' in st.session_state
 
-# 新增：从数据库加载用户聊天历史
-def load_user_history(username):
-    db = st.session_state.mongodb_client.get_database("paper")
-    collection = db.get_collection("user_chat_history")
-    record = collection.find_one({"username": username})
-    if record and "history" in record:
-        return record["history"]
-    else:
-        return []
-
-# 新增：保存用户聊天历史到数据库
-def save_user_history(username, history):
-    db = st.session_state.mongodb_client.get_database("paper")
-    collection = db.get_collection("user_chat_history")
-    collection.update_one(
-        {"username": username},
-        {"$set": {"history": history}},
-        upsert=True
-    )
 @st.cache_resource
 def initialize_bert():
     try:
@@ -116,26 +154,38 @@ def load_spacy_model():
 
 
 # ================== 核心功能函数 ==================
-def call_local_qwen(prompt: str) -> str:
+def call_ernie_model(prompt: str) -> str:
+
+
+
+    url = f"{BASE_URL}/chat/completions"
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {API_KEY}"
+    }
+
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
+    }
+
     try:
-        process = subprocess.run(
-            ['ollama', 'run', QWEN_MODEL_NAME],
-            input=prompt,
-            capture_output=True,
-            text=True,
-            encoding='utf-8',
-            check=True,
-            timeout=MODEL_TIMEOUT
-        )
-        return process.stdout.strip()
-    except FileNotFoundError:
-        return "[本地模型调用失败] 'ollama' 命令未找到。"
-    except subprocess.CalledProcessError as e:
-        return f"[本地模型调用失败] {e.stderr.strip()}"
-    except subprocess.TimeoutExpired:
-        return f"[本地模型调用超时] {MODEL_TIMEOUT} 秒内未返回。"
+        response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=MODEL_TIMEOUT)
+        response.raise_for_status()  # 如果状态码不是200，会抛出异常
+        result = response.json()
+
+        # 提取模型返回的文本
+        return result["choices"][0]["message"]["content"].strip()
+
+    except requests.exceptions.Timeout:
+        return f"[ERNIE 调用超时] {MODEL_TIMEOUT} 秒内未返回。"
+    except requests.exceptions.RequestException as e:
+        return f"[ERNIE 调用失败] {str(e)}"
     except Exception as e:
-        return f"[本地模型调用出错] {str(e)}"
+        return f"[ERNIE 调用出错] {str(e)}"
 
 
 def get_embedding(text, tokenizer, model):
@@ -170,7 +220,7 @@ def find_random_article(collection):
 def adjust_writing_style_local(input_text, reference_text):
     prompt = (
         f"你是一名学术写作专家，擅长根据参考论文调整文本风格。请尽最大可能保持原文内容，不要增加原文没有的内容，只修改写作风格，但修改用词、句式和结构以尽量匹配参考论文的学术风格。只借鉴参考论文的学术风格，不借鉴参考论文的内容。\n参考论文片段：\n{reference_text[:2000]}...\n\n请修改以下文章使其符合参考论文的学术风格：\n{input_text}")
-    return call_local_qwen(prompt)
+    return call_ernie_model(prompt)
 
 
 def get_pinyin_with_tone(text):
@@ -196,7 +246,7 @@ def summarize_user_focus_area():
     user_texts = [m["input"] for m in st.session_state[history_key] if m["type"] in ["风格迁移", "语义纠错"]]
     if not user_texts: return "未获取到用户历史提问"
     prompt = ("请阅读以下用户的提问历史，总结出其关注的学术领域，直接输出1-2个简洁关键词：\n" + "\n".join(user_texts))
-    interest_tags = call_local_qwen(prompt)
+    interest_tags = call_ernie_model(prompt)
     st.session_state["interest_tags"] = interest_tags
     return interest_tags
 def generate_paper_overview_from_history(chat_history):
@@ -216,7 +266,7 @@ def generate_paper_overview_from_history(chat_history):
         "研究目的：...\n相关工作：...\n实验内容：...\n结论：...\n未来方向：...\n\n"
         f"以下是用户历史内容：\n{chr(10).join(history_texts)}"
     )
-    response = call_local_qwen(overview_prompt)
+    response = call_ernie_model(overview_prompt)
     sections = {
         "研究目的": "暂无",
         "相关工作": "暂无",
@@ -237,10 +287,22 @@ def generate_paper_overview_from_history(chat_history):
 def generate_personalized_suggestions(focus_area, user_input_text):
     prompt = (
         f"已知用户关注的学科领域包括：{focus_area}。\n以下是用户在该领域内撰写的文本内容:\n{user_input_text}\n请结合用户关注的学术领域，根据该领域学术的写作规范，指出用户输入的文本中存在的一些问题，并从与用户输入中举出一些例子印证，最后再提出用户在文章结构、写作风格、逻辑表达或术语使用方面需要逐步提升的方向，并用'你'为称呼。")
-    return call_local_qwen(prompt)
+    return call_ernie_model(prompt)
 
 def main():
     st.set_page_config(page_title="学术写作智能助手", layout="wide")
+
+    if not login_register():
+        st.info("请先登录或注册")
+        return
+
+    username = st.session_state.username
+    history_key = f"chat_history_{username}"
+    if history_key not in st.session_state:
+        st.session_state[history_key] = []
+
+    st.markdown(f"<h1 style='text-align:center; color:#4A90E2;'>学术写作智能助手 - 用户：{username}</h1>", unsafe_allow_html=True)
+
     # 你的初始化代码
     if "mongodb_client" not in st.session_state:
         st.session_state.mongodb_client = connect_mongodb()
@@ -251,19 +313,6 @@ def main():
     if not all([st.session_state.mongodb_client, st.session_state.bert_tokenizer, st.session_state.spacy_model]):
         st.warning("核心组件加载失败，请检查终端日志。")
         st.stop()
-
-    if not login_register():
-        st.info("请先登录或注册")
-        return
-
-    username = st.session_state.username
-    history_key = f"chat_history_{username}"
-    if history_key not in st.session_state:
-        st.session_state[history_key] = load_user_history(username)
-
-    st.markdown(f"<h1 style='text-align:center; color:#4A90E2;'>学术写作智能助手 - 用户：{username}</h1>", unsafe_allow_html=True)
-
-
 
     with st.sidebar:
         st.title("功能选择")
@@ -292,27 +341,27 @@ def main():
                 pinyin_info = get_pinyin_with_tone(input_text)
                 spelling_prompt = (
                     f"你是中文拼写纠错专家，不需要判断文本内容是否合理，而是根据拼音信息，判断并纠正中文文本中可能存在的拼写错误,如果文本中有拼写错误，请直接输出修改后的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在拼写错误，则直接输出原句即可。文本：{input_text}\n拼音：{pinyin_info}请直接输出最终正确的句子,不要给出其他多余文字:")
-                spelling_result = call_local_qwen(spelling_prompt)
+                spelling_result = call_ernie_model(spelling_prompt)
 
                 if enable_self_reflection:
                     reflection_prompt = (
                         f"请检查以下纠错结果是否符合要求：\n1. 是否解决了原句中的所有拼写问题\n2. 是否遵循了最小变化原则\n3. 是否引入了新的错误\n4. 如果发现问题，请直接输出改进后的句子，无需解释;如果结果正确，请直接输出原句\n原句: {input_text}\n初始纠错结果: {spelling_result}\n\n请直接输出最终正确的句子,不要给出其他多余文字:")
-                    spelling_result = call_local_qwen(reflection_prompt)
+                    spelling_result = call_ernie_model(reflection_prompt)
 
                 if len(input_text) <= 150:
                     syntax_report = generate_syntax_analysis(spelling_result, st.session_state.spacy_model)
                     grammar_prompt = (
                         f"你是一个优秀的中文语病纠错模型，参考提供的句法分析报告，你需要识别并纠正输入的文本中可能含有的语病错误并输出正确的文本，纠正时尽可能减少对原文本的改动，并符合最小变化原则，即保证进行的修改都是最小且必要的，你应该避免对文章结构或词汇表达风格进行的修改。要求直接输出没有语法错误的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在语法错误，则直接输出原句即可。句子：{spelling_result}\n语法分析结果：\n{syntax_report}请直接输出正确的文本,不要给出其他多余文字:")
-                    grammar_result = call_local_qwen(grammar_prompt)
+                    grammar_result = call_ernie_model(grammar_prompt)
                 else:
                     grammar_prompt = (
                         f"你是一个优秀的中文语病纠错模型，你需要识别并纠正输入的文本中可能含有的语病错误并输出正确的文本，纠正时尽可能减少对原文本的改动，并符合最小变化原则，即保证进行的修改都是最小且必要的，你应该避免对文章结构或词汇表达风格进行的修改。要求直接输出没有语法错误的句子，无需添加任何额外的解释或说明，如果输入的句子中不存在语法错误，则直接输出原句即可。句子：{spelling_result}\n请直接输出正确的文本,不要给出其他多余文字:")
-                    grammar_result = call_local_qwen(grammar_prompt)
+                    grammar_result = call_ernie_model(grammar_prompt)
 
                 if enable_self_reflection:
                     grammar_reflection_prompt = (
                         f"你是语病检查员，请检查以下纠错结果是否符合要求：\n1. 是否解决了原句中的所有语病问题\n2. 是否遵循了最小变化原则\n3. 是否引入了新的错误\n4. 如果发现问题，请直接输出改进后的句子，无需解释；如果用户初始纠错结果正确，请直接输出初始纠错结果,不需要说明\n原句: {input_text}\n初始纠错结果: {grammar_result}\n\n请直接输出最终正确的句子，不需要其他多余文字:")
-                    grammar_result = call_local_qwen(grammar_reflection_prompt)
+                    grammar_result = call_ernie_model(grammar_reflection_prompt)
 
                 # 将最终结果保存到 chat_history
                 # 高亮版本
@@ -351,11 +400,9 @@ def main():
                         "请你结合用户当前文本与这些概览信息，指出其文本内容存在的主要问题，"
                         "并提供详细建议和修改方向。你可以引用概览内容作为参考来判断当前文本是否偏离原意或风格。请直接用“你”来称呼用户，格式清晰、条理明确。"
                     )
-                    suggestions = call_local_qwen(prompt)
-                st.session_state[history_key][-1]["suggestions"] = suggestions
-
+                    suggestions = call_ernie_model(prompt)
                 # 将最终结果保存到 chat_history
-                save_user_history(username, st.session_state[history_key])
+                st.session_state[history_key][-1]["suggestions"] = suggestions
         # 处理完毕后刷新界面并避免无限循环，先标记再rerun
         st.session_state['just_updated'] = True
 
